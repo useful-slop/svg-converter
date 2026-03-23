@@ -1,0 +1,998 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SVG Converter</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Mono:ital,wght@0,300;0,400;0,500;1,300&family=Syne:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg: #0a0a0f;
+    --surface: #12121a;
+    --surface2: #1a1a26;
+    --border: #2a2a40;
+    --accent: #7c6af7;
+    --accent2: #f76ab4;
+    --accent3: #6af7d4;
+    --text: #e8e8f0;
+    --muted: #6b6b8a;
+    --success: #6af7d4;
+    --error: #f76a6a;
+  }
+
+  html, body { height: 100%; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'DM Mono', monospace;
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.04'/%3E%3C/svg%3E");
+    pointer-events: none;
+    z-index: 1000;
+    opacity: 0.4;
+  }
+
+  body::after {
+    content: '';
+    position: fixed;
+    top: -20%;
+    left: 30%;
+    width: 600px;
+    height: 600px;
+    background: radial-gradient(circle, rgba(124,106,247,0.08) 0%, transparent 70%);
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  .app {
+    position: relative;
+    z-index: 1;
+    max-width: 1080px;
+    margin: 0 auto;
+    padding: 48px 24px 80px;
+  }
+
+  header { margin-bottom: 48px; }
+
+  .header-tag {
+    font-size: 10px;
+    letter-spacing: 0.25em;
+    color: var(--accent);
+    text-transform: uppercase;
+    margin-bottom: 12px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .header-tag::before {
+    content: '';
+    display: inline-block;
+    width: 20px;
+    height: 1px;
+    background: var(--accent);
+  }
+
+  h1 {
+    font-family: 'Syne', sans-serif;
+    font-size: clamp(36px, 6vw, 64px);
+    font-weight: 800;
+    line-height: 1;
+    letter-spacing: -0.03em;
+    background: linear-gradient(135deg, var(--text) 0%, var(--muted) 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+
+  h1 span {
+    background: linear-gradient(135deg, var(--accent) 0%, var(--accent2) 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+
+  .subtitle {
+    font-size: 12px;
+    color: var(--muted);
+    margin-top: 12px;
+    letter-spacing: 0.05em;
+  }
+
+  .main-grid {
+    display: grid;
+    grid-template-columns: 220px 1fr 1fr;
+    gap: 2px;
+    background: var(--border);
+    border-radius: 16px 16px 0 0;
+    overflow: hidden;
+    border: 1px solid var(--border);
+    border-bottom: none;
+  }
+
+  .col {
+    background: var(--surface);
+    padding: 20px;
+    min-height: 340px;
+  }
+
+  .col-queue { border-radius: 15px 0 0 0; }
+  .col-output { border-radius: 0 15px 0 0; }
+
+  .col-label {
+    font-size: 9px;
+    letter-spacing: 0.3em;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin-bottom: 14px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  .queue-drop {
+    border: 1.5px dashed var(--border);
+    border-radius: 10px;
+    padding: 12px 10px;
+    text-align: center;
+    cursor: pointer;
+    transition: all 0.2s;
+    background: var(--bg);
+    font-size: 11px;
+    color: var(--muted);
+    margin-bottom: 10px;
+    line-height: 1.6;
+  }
+
+  .queue-drop:hover, .queue-drop.drag-over {
+    border-color: var(--accent);
+    color: var(--accent);
+    background: rgba(124,106,247,0.04);
+  }
+
+  .queue-drop strong { color: var(--accent); }
+
+  #file-input { display: none; }
+
+  .file-list {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    max-height: 260px;
+    overflow-y: auto;
+    scrollbar-width: thin;
+    scrollbar-color: var(--border) transparent;
+  }
+
+  .file-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 7px 9px;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: all 0.15s;
+    border: 1px solid transparent;
+    background: var(--bg);
+  }
+
+  .file-item:hover { border-color: var(--border); }
+  .file-item.active { border-color: var(--accent); background: rgba(124,106,247,0.08); }
+  .file-item.done .fi-name { color: var(--success); }
+
+  .fi-thumb {
+    width: 30px;
+    height: 30px;
+    border-radius: 5px;
+    background: var(--surface2);
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+  }
+
+  .fi-thumb svg { width: 26px; height: 26px; }
+
+  .fi-meta { flex: 1; min-width: 0; }
+
+  .fi-name {
+    font-size: 10px;
+    color: var(--text);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .fi-dims { font-size: 9px; color: var(--muted); margin-top: 1px; }
+
+  .fi-check {
+    font-size: 12px;
+    color: var(--success);
+    flex-shrink: 0;
+    opacity: 0;
+  }
+  .file-item.done .fi-check { opacity: 1; }
+
+  .fi-remove {
+    width: 18px;
+    height: 18px;
+    border-radius: 4px;
+    background: none;
+    border: none;
+    color: var(--muted);
+    cursor: pointer;
+    font-size: 15px;
+    line-height: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.15s;
+    flex-shrink: 0;
+    opacity: 0;
+  }
+
+  .file-item:hover .fi-remove { opacity: 1; }
+  .fi-remove:hover { color: var(--error); background: rgba(247,106,106,0.1); }
+
+  .queue-empty {
+    font-size: 11px;
+    color: var(--muted);
+    text-align: center;
+    padding: 20px 0;
+    line-height: 1.7;
+  }
+
+  .badge {
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-size: 10px;
+    letter-spacing: 0.08em;
+  }
+
+  .badge-svg   { background: rgba(124,106,247,0.15); color: var(--accent); }
+  .badge-count { background: rgba(106,247,212,0.1); color: var(--accent3); }
+
+  .checker {
+    background: repeating-conic-gradient(#1f1f2e 0% 25%, #16161e 0% 50%) 0 0 / 16px 16px;
+    border-radius: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+    min-height: 180px;
+    margin-bottom: 12px;
+  }
+
+  .checker svg, .checker img { max-width: 100%; max-height: 180px; width: auto; height: auto; }
+
+  .preview-placeholder {
+    font-size: 11px;
+    color: var(--muted);
+    text-align: center;
+    padding: 20px;
+    line-height: 1.6;
+  }
+
+  .file-meta-bar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 10px;
+    color: var(--muted);
+  }
+
+  #output-img { max-width: 100%; max-height: 180px; display: none; }
+
+  .output-info {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    font-size: 10px;
+    color: var(--muted);
+  }
+
+  .controls {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 2px;
+    background: var(--border);
+  }
+
+  .control-group {
+    background: var(--surface2);
+    padding: 18px 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  label {
+    font-size: 9px;
+    letter-spacing: 0.25em;
+    text-transform: uppercase;
+    color: var(--muted);
+  }
+
+  .input-row { display: flex; align-items: center; gap: 8px; }
+
+  input[type="number"], select {
+    background: var(--bg);
+    border: 1px solid var(--border);
+    color: var(--text);
+    font-family: 'DM Mono', monospace;
+    font-size: 14px;
+    padding: 9px 12px;
+    border-radius: 8px;
+    width: 100%;
+    transition: border-color 0.2s;
+    -moz-appearance: textfield;
+    appearance: textfield;
+  }
+
+  input[type="number"]::-webkit-outer-spin-button,
+  input[type="number"]::-webkit-inner-spin-button { -webkit-appearance: none; }
+
+  input[type="number"]:focus, select:focus { outline: none; border-color: var(--accent); }
+
+  select {
+    cursor: pointer;
+    appearance: none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%236b6b8a' stroke-width='2'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 12px center;
+    padding-right: 32px;
+  }
+
+  .link-icon { color: var(--muted); cursor: pointer; flex-shrink: 0; transition: color 0.2s; user-select: none; }
+  .link-icon.linked { color: var(--accent3); }
+
+  .size-display { font-size: 10px; color: var(--muted); min-height: 14px; }
+  .size-display span { color: var(--accent3); }
+
+  .presets { display: flex; gap: 5px; flex-wrap: wrap; }
+
+  .preset-btn {
+    background: var(--bg);
+    border: 1px solid var(--border);
+    color: var(--muted);
+    font-family: 'DM Mono', monospace;
+    font-size: 10px;
+    padding: 4px 9px;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: all 0.2s;
+  }
+  .preset-btn:hover { border-color: var(--accent); color: var(--accent); }
+
+  .format-tabs {
+    display: flex;
+    gap: 2px;
+    background: var(--bg);
+    padding: 3px;
+    border-radius: 10px;
+    border: 1px solid var(--border);
+  }
+
+  .format-tab {
+    flex: 1;
+    background: none;
+    border: none;
+    color: var(--muted);
+    font-family: 'DM Mono', monospace;
+    font-size: 11px;
+    padding: 7px 4px;
+    border-radius: 7px;
+    cursor: pointer;
+    transition: all 0.2s;
+  }
+  .format-tab.active { background: var(--surface); color: var(--text); }
+  .format-tab:hover:not(.active) { color: var(--text); }
+
+  .quality-row { display: flex; align-items: center; gap: 10px; }
+
+  input[type="range"] {
+    -webkit-appearance: none;
+    appearance: none;
+    flex: 1;
+    height: 3px;
+    background: var(--border);
+    border-radius: 2px;
+    outline: none;
+    cursor: pointer;
+  }
+  input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    background: var(--accent);
+    cursor: pointer;
+    box-shadow: 0 0 8px rgba(124,106,247,0.5);
+  }
+
+  .quality-val { font-size: 12px; color: var(--accent); min-width: 30px; text-align: right; }
+
+  .export-bar {
+    background: var(--border);
+    border-radius: 0 0 16px 16px;
+    padding: 2px;
+    border: 1px solid var(--border);
+    border-top: none;
+  }
+
+  .export-inner {
+    background: var(--surface2);
+    border-radius: 0 0 14px 14px;
+    padding: 16px 22px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
+  }
+
+  .btn {
+    border: none;
+    font-family: 'Syne', sans-serif;
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    padding: 12px 22px;
+    border-radius: 10px;
+    cursor: pointer;
+    transition: all 0.25s;
+    white-space: nowrap;
+    flex-shrink: 0;
+  }
+
+  .btn-primary {
+    background: linear-gradient(135deg, var(--accent) 0%, var(--accent2) 100%);
+    color: white;
+    position: relative;
+    overflow: hidden;
+  }
+  .btn-primary::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(135deg, rgba(255,255,255,0.12) 0%, transparent 60%);
+  }
+  .btn-primary:hover { transform: translateY(-1px); box-shadow: 0 8px 28px rgba(124,106,247,0.4); }
+  .btn-primary:active { transform: none; }
+  .btn-primary:disabled { opacity: 0.3; cursor: not-allowed; transform: none; box-shadow: none; }
+
+  .btn-secondary {
+    background: var(--surface);
+    color: var(--text);
+    border: 1px solid var(--border);
+  }
+  .btn-secondary:hover { border-color: var(--accent3); color: var(--accent3); }
+  .btn-secondary:disabled { opacity: 0.3; cursor: not-allowed; }
+
+  .status-msg { font-size: 11px; color: var(--muted); flex: 1; min-width: 120px; line-height: 1.5; }
+  .status-msg.ok  { color: var(--success); }
+  .status-msg.err { color: var(--error); }
+
+  .dim-badge {
+    font-size: 11px;
+    padding: 6px 14px;
+    border-radius: 6px;
+    background: rgba(106,247,212,0.08);
+    color: var(--accent3);
+    border: 1px solid rgba(106,247,212,0.15);
+    white-space: nowrap;
+    flex-shrink: 0;
+  }
+
+  .progress-wrap {
+    width: 100%;
+    height: 3px;
+    background: var(--border);
+    border-radius: 2px;
+    overflow: hidden;
+    margin-top: 6px;
+    display: none;
+  }
+  .progress-wrap.visible { display: block; }
+  .progress-bar {
+    height: 100%;
+    background: linear-gradient(90deg, var(--accent), var(--accent3));
+    border-radius: 2px;
+    transition: width 0.2s;
+    width: 0%;
+  }
+
+  @media (max-width: 700px) {
+    .main-grid { grid-template-columns: 1fr; }
+    .col-queue { border-radius: 15px 15px 0 0; min-height: auto; }
+    .col-output { border-radius: 0; }
+    .controls { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+<div class="app">
+
+  <header>
+    <div class="header-tag">Vector Export Tool</div>
+    <h1>SVG <span>Converter</span></h1>
+    <p class="subtitle">// drop multiple svgs → configure once → export all at once</p>
+  </header>
+
+  <div class="main-grid">
+
+    <!-- Queue -->
+    <div class="col col-queue">
+      <div class="col-label">
+        <span>01 — Files</span>
+        <span class="badge badge-count" id="count-badge" style="display:none"></span>
+      </div>
+
+      <div class="queue-drop" id="queue-drop">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="opacity:.5;margin-bottom:4px"><path d="M12 5v10M5 12l7-7 7 7" stroke-linecap="round" stroke-linejoin="round"/><path d="M5 19h14" stroke-linecap="round"/></svg><br>
+        <strong>Add SVGs</strong> — click or drop
+      </div>
+      <input type="file" id="file-input" accept=".svg,image/svg+xml" multiple>
+
+      <div class="queue-empty" id="queue-empty">No files yet.<br>Add SVGs above.</div>
+      <div class="file-list" id="file-list"></div>
+    </div>
+
+    <!-- Source preview -->
+    <div class="col col-input">
+      <div class="col-label">
+        <span>02 — Source</span>
+        <span id="orig-size" style="font-size:10px;color:var(--muted)"></span>
+      </div>
+      <div class="checker" id="input-preview">
+        <div class="preview-placeholder">Select a file<br>from the queue</div>
+      </div>
+      <div class="file-meta-bar" id="file-meta" style="display:none">
+        <span class="badge badge-svg">SVG</span>
+        <span id="active-name" style="font-size:10px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1"></span>
+        <span id="active-size" style="font-size:10px;flex-shrink:0"></span>
+      </div>
+    </div>
+
+    <!-- Output preview -->
+    <div class="col col-output">
+      <div class="col-label">
+        <span>03 — Output</span>
+        <span id="out-dim-label" style="font-size:10px;color:var(--muted)"></span>
+      </div>
+      <div class="checker" id="output-preview">
+        <div class="preview-placeholder" id="output-placeholder">Output preview<br>will appear here</div>
+        <img id="output-img" alt="output">
+      </div>
+      <div class="output-info">
+        <span id="out-format-label" style="color:var(--muted)">—</span>
+        <span id="out-size-label" style="color:var(--muted)">—</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Controls -->
+  <div class="controls">
+    <div class="control-group">
+      <label>Width (px)</label>
+      <div class="input-row">
+        <input type="number" id="width-input" value="1920" min="1" max="16000">
+        <svg class="link-icon linked" id="link-toggle" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" title="Lock aspect ratio">
+          <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/>
+          <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/>
+        </svg>
+      </div>
+      <div class="size-display" id="computed-h"></div>
+      <div class="presets">
+        <button class="preset-btn" data-w="512">512</button>
+        <button class="preset-btn" data-w="1024">1k</button>
+        <button class="preset-btn" data-w="1920">FHD</button>
+        <button class="preset-btn" data-w="3840">4K</button>
+      </div>
+    </div>
+
+    <div class="control-group">
+      <label>Height (px)</label>
+      <input type="number" id="height-input" value="1080" min="1" max="16000">
+      <div class="size-display" id="computed-w"></div>
+      <div class="presets">
+        <button class="preset-btn" data-h="512">512</button>
+        <button class="preset-btn" data-h="768">768</button>
+        <button class="preset-btn" data-h="1080">1080</button>
+        <button class="preset-btn" data-h="2160">2160</button>
+      </div>
+    </div>
+
+    <div class="control-group">
+      <label>Format</label>
+      <div class="format-tabs" id="format-tabs">
+        <button class="format-tab active" data-fmt="png">PNG</button>
+        <button class="format-tab" data-fmt="jpeg">JPG</button>
+        <button class="format-tab" data-fmt="webp">WEBP</button>
+      </div>
+
+      <label>Quality <span id="quality-note" style="color:var(--muted);font-size:9px">— lossless</span></label>
+      <div class="quality-row">
+        <input type="range" id="quality-slider" min="10" max="100" value="95">
+        <span class="quality-val" id="quality-val">95</span>
+      </div>
+
+      <label>Background</label>
+      <div class="input-row" style="gap:8px">
+        <input type="color" id="bg-color" value="#ffffff"
+          style="width:34px;height:34px;border:1px solid var(--border);border-radius:6px;padding:2px;background:var(--bg);cursor:pointer;flex-shrink:0;display:none">
+        <select id="bg-mode">
+          <option value="transparent">Transparent</option>
+          <option value="color">Solid color</option>
+          <option value="white">White</option>
+          <option value="black">Black</option>
+        </select>
+      </div>
+    </div>
+  </div>
+
+  <!-- Export bar -->
+  <div class="export-bar">
+    <div class="export-inner">
+      <button class="btn btn-primary" id="export-one-btn" disabled>Export →</button>
+      <button class="btn btn-secondary" id="export-all-btn" disabled>Export All</button>
+      <div style="flex:1;min-width:120px">
+        <div class="status-msg" id="status-msg">Add SVG files to get started</div>
+        <div class="progress-wrap" id="progress-wrap">
+          <div class="progress-bar" id="progress-bar"></div>
+        </div>
+      </div>
+      <div class="dim-badge" id="dim-badge">— × —</div>
+    </div>
+  </div>
+
+</div>
+<script>
+  const queueDrop   = document.getElementById('queue-drop');
+  const fileInput   = document.getElementById('file-input');
+  const fileListEl  = document.getElementById('file-list');
+  const queueEmpty  = document.getElementById('queue-empty');
+  const countBadge  = document.getElementById('count-badge');
+  const inputPreview = document.getElementById('input-preview');
+  const fileMeta    = document.getElementById('file-meta');
+  const activeName  = document.getElementById('active-name');
+  const activeSize  = document.getElementById('active-size');
+  const origSize    = document.getElementById('orig-size');
+  const outputImg   = document.getElementById('output-img');
+  const outputPlaceholder = document.getElementById('output-placeholder');
+  const outDimLabel = document.getElementById('out-dim-label');
+  const outFormatLabel = document.getElementById('out-format-label');
+  const outSizeLabel = document.getElementById('out-size-label');
+  const widthInput  = document.getElementById('width-input');
+  const heightInput = document.getElementById('height-input');
+  const linkToggle  = document.getElementById('link-toggle');
+  const computedH   = document.getElementById('computed-h');
+  const computedW   = document.getElementById('computed-w');
+  const formatTabs  = document.getElementById('format-tabs');
+  const qualitySlider = document.getElementById('quality-slider');
+  const qualityVal  = document.getElementById('quality-val');
+  const qualityNote = document.getElementById('quality-note');
+  const bgMode      = document.getElementById('bg-mode');
+  const bgColor     = document.getElementById('bg-color');
+  const exportOneBtn = document.getElementById('export-one-btn');
+  const exportAllBtn = document.getElementById('export-all-btn');
+  const statusMsg   = document.getElementById('status-msg');
+  const dimBadge    = document.getElementById('dim-badge');
+  const progressWrap = document.getElementById('progress-wrap');
+  const progressBar = document.getElementById('progress-bar');
+
+  let files = [];
+  let activeIdx = -1;
+  let linkedAspect = true;
+  let currentFormat = 'png';
+  let previewTimeout = null;
+
+  // Drop zone
+  queueDrop.addEventListener('click', () => fileInput.click());
+  ['dragover','dragenter'].forEach(ev => {
+    queueDrop.addEventListener(ev, e => { e.preventDefault(); queueDrop.classList.add('drag-over'); });
+    document.body.addEventListener(ev, e => e.preventDefault());
+  });
+  ['dragleave','drop'].forEach(ev => queueDrop.addEventListener(ev, () => queueDrop.classList.remove('drag-over')));
+  queueDrop.addEventListener('drop', e => { e.preventDefault(); addFiles([...e.dataTransfer.files]); });
+  fileInput.addEventListener('change', e => { addFiles([...e.target.files]); fileInput.value = ''; });
+
+  function addFiles(rawFiles) {
+    const svgs = rawFiles.filter(f => f.name.endsWith('.svg') || f.type === 'image/svg+xml');
+    if (!svgs.length) { setStatus('Only SVG files are supported.', 'err'); return; }
+    let loaded = 0;
+    svgs.forEach(file => {
+      if (files.some(f => f.name === file.name && f.size === file.size)) { loaded++; return; }
+      const reader = new FileReader();
+      reader.onload = ev => {
+        const content = ev.target.result;
+        const { w, h } = parseDims(content);
+        files.push({ name: file.name, size: file.size, content, w, h, aspect: w / h, done: false });
+        loaded++;
+        renderQueue();
+        if (activeIdx === -1) selectFile(files.length - 1);
+        if (loaded === svgs.length) setStatus(`${svgs.length} file${svgs.length > 1 ? 's' : ''} added`, 'ok');
+      };
+      reader.readAsText(file);
+    });
+  }
+
+  function parseDims(svg) {
+    const doc = new DOMParser().parseFromString(svg, 'image/svg+xml');
+    const el = doc.documentElement;
+    let w = parseFloat(el.getAttribute('width'));
+    let h = parseFloat(el.getAttribute('height'));
+    const vb = el.getAttribute('viewBox');
+    if ((!w || !h) && vb) {
+      const p = vb.trim().split(/[\s,]+/);
+      w = parseFloat(p[2]); h = parseFloat(p[3]);
+    }
+    return { w: w || 512, h: h || 512 };
+  }
+
+  function renderQueue() {
+    fileListEl.innerHTML = '';
+    queueEmpty.style.display = files.length ? 'none' : 'block';
+    countBadge.style.display = files.length ? 'inline' : 'none';
+    countBadge.textContent = files.length;
+    exportAllBtn.disabled = files.length === 0;
+
+    files.forEach((f, i) => {
+      const item = document.createElement('div');
+      item.className = 'file-item' + (i === activeIdx ? ' active' : '') + (f.done ? ' done' : '');
+
+      const thumb = document.createElement('div');
+      thumb.className = 'fi-thumb';
+      try {
+        const doc = new DOMParser().parseFromString(f.content, 'image/svg+xml');
+        const svg = doc.documentElement;
+        svg.setAttribute('width', '26'); svg.setAttribute('height', '26');
+        thumb.appendChild(document.importNode(svg, true));
+      } catch(e) { thumb.textContent = '?'; }
+
+      const meta = document.createElement('div');
+      meta.className = 'fi-meta';
+      meta.innerHTML = `<div class="fi-name">${f.name.replace(/\.svg$/i,'')}</div><div class="fi-dims">${Math.round(f.w)} × ${Math.round(f.h)}</div>`;
+
+      const check = document.createElement('span');
+      check.className = 'fi-check';
+      check.textContent = '✓';
+
+      const rm = document.createElement('button');
+      rm.className = 'fi-remove';
+      rm.textContent = '×';
+      rm.title = 'Remove';
+      rm.addEventListener('click', e => { e.stopPropagation(); removeFile(i); });
+
+      item.append(thumb, meta, check, rm);
+      item.addEventListener('click', () => selectFile(i));
+      fileListEl.appendChild(item);
+    });
+  }
+
+  function removeFile(i) {
+    files.splice(i, 1);
+    if (activeIdx >= files.length) activeIdx = files.length - 1;
+    if (files.length === 0) { activeIdx = -1; clearPreviews(); exportOneBtn.disabled = true; exportAllBtn.disabled = true; setStatus('Add SVG files to get started'); }
+    else selectFile(Math.max(0, activeIdx));
+    renderQueue();
+  }
+
+  function clearPreviews() {
+    inputPreview.innerHTML = '<div class="preview-placeholder">Select a file<br>from the queue</div>';
+    fileMeta.style.display = 'none';
+    origSize.textContent = '';
+    outputImg.style.display = 'none';
+    outputPlaceholder.style.display = '';
+    outDimLabel.textContent = ''; outFormatLabel.textContent = '—'; outSizeLabel.textContent = '—';
+  }
+
+  function selectFile(i) {
+    if (i < 0 || i >= files.length) return;
+    activeIdx = i;
+    const f = files[i];
+
+    inputPreview.innerHTML = '';
+    try {
+      const doc = new DOMParser().parseFromString(f.content, 'image/svg+xml');
+      const svg = doc.documentElement;
+      svg.setAttribute('width', '100%');
+      svg.removeAttribute('height');
+      svg.style.maxHeight = '180px';
+      inputPreview.appendChild(document.importNode(svg, true));
+    } catch(e) {}
+
+    fileMeta.style.display = 'flex';
+    activeName.textContent = f.name;
+    activeSize.textContent = formatBytes(f.size);
+    origSize.textContent = `${Math.round(f.w)} × ${Math.round(f.h)}`;
+
+    if (linkedAspect) heightInput.value = Math.round(parseInt(widthInput.value) / f.aspect);
+    exportOneBtn.disabled = false;
+    renderQueue();
+    updateDims();
+    schedulePreview();
+  }
+
+  // Dimensions
+  linkToggle.addEventListener('click', () => {
+    linkedAspect = !linkedAspect;
+    linkToggle.classList.toggle('linked', linkedAspect);
+    if (linkedAspect && activeIdx >= 0) heightInput.value = Math.round(parseInt(widthInput.value) / files[activeIdx].aspect);
+    updateDims();
+  });
+
+  widthInput.addEventListener('input', () => {
+    if (linkedAspect && activeIdx >= 0) heightInput.value = Math.round(parseInt(widthInput.value || 1) / files[activeIdx].aspect);
+    updateDims(); schedulePreview();
+  });
+
+  heightInput.addEventListener('input', () => {
+    if (linkedAspect && activeIdx >= 0) widthInput.value = Math.round(parseInt(heightInput.value || 1) * files[activeIdx].aspect);
+    updateDims(); schedulePreview();
+  });
+
+  document.querySelectorAll('.preset-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      if (btn.dataset.w) { widthInput.value = btn.dataset.w; if (linkedAspect && activeIdx >= 0) heightInput.value = Math.round(parseInt(widthInput.value) / files[activeIdx].aspect); }
+      if (btn.dataset.h) { heightInput.value = btn.dataset.h; if (linkedAspect && activeIdx >= 0) widthInput.value = Math.round(parseInt(heightInput.value) * files[activeIdx].aspect); }
+      updateDims(); schedulePreview();
+    });
+  });
+
+  function updateDims() {
+    const w = parseInt(widthInput.value) || 0, h = parseInt(heightInput.value) || 0;
+    dimBadge.textContent = w && h ? `${w} × ${h} px` : '— × —';
+    if (linkedAspect && activeIdx >= 0) {
+      const a = files[activeIdx].aspect;
+      computedH.innerHTML = `→ height: <span>${Math.round(w / a)} px</span>`;
+      computedW.innerHTML = `→ width: <span>${Math.round(h * a)} px</span>`;
+    } else { computedH.textContent = ''; computedW.textContent = ''; }
+  }
+
+  // Format / quality / bg
+  formatTabs.querySelectorAll('.format-tab').forEach(tab => {
+    tab.addEventListener('click', () => {
+      formatTabs.querySelectorAll('.format-tab').forEach(t => t.classList.remove('active'));
+      tab.classList.add('active'); currentFormat = tab.dataset.fmt;
+      updateQualityNote(); schedulePreview();
+    });
+  });
+
+  qualitySlider.addEventListener('input', () => { qualityVal.textContent = qualitySlider.value; schedulePreview(); });
+  bgMode.addEventListener('change', () => { bgColor.style.display = bgMode.value === 'color' ? 'inline-block' : 'none'; schedulePreview(); });
+  bgColor.addEventListener('input', schedulePreview);
+
+  function updateQualityNote() {
+    qualityNote.textContent = currentFormat === 'png' ? '— lossless' : '';
+    qualitySlider.disabled = currentFormat === 'png';
+    qualitySlider.style.opacity = currentFormat === 'png' ? '0.35' : '1';
+  }
+
+  // Render engine
+  function renderSVG(svgContent, w, h) {
+    return new Promise((resolve, reject) => {
+      const doc = new DOMParser().parseFromString(svgContent, 'image/svg+xml');
+      const el = doc.documentElement;
+      // If there's no viewBox, synthesize one from the SVG's natural width/height
+      // so the browser knows how to scale content to fill the target dimensions.
+      if (!el.getAttribute('viewBox')) {
+        const nw = parseFloat(el.getAttribute('width')) || w;
+        const nh = parseFloat(el.getAttribute('height')) || h;
+        el.setAttribute('viewBox', `0 0 ${nw} ${nh}`);
+      }
+      el.setAttribute('width', w); el.setAttribute('height', h);
+      const blob = new Blob([new XMLSerializer().serializeToString(el)], { type: 'image/svg+xml' });
+      const url = URL.createObjectURL(blob);
+      const img = new Image();
+      img.onload = () => {
+        const c = document.createElement('canvas');
+        c.width = w; c.height = h;
+        const ctx = c.getContext('2d');
+        const bg = bgMode.value;
+        if (bg === 'white') { ctx.fillStyle = '#fff'; ctx.fillRect(0,0,w,h); }
+        else if (bg === 'black') { ctx.fillStyle = '#000'; ctx.fillRect(0,0,w,h); }
+        else if (bg === 'color') { ctx.fillStyle = bgColor.value; ctx.fillRect(0,0,w,h); }
+        else if (currentFormat === 'jpeg') { ctx.fillStyle = '#fff'; ctx.fillRect(0,0,w,h); }
+        ctx.drawImage(img, 0, 0, w, h);
+        URL.revokeObjectURL(url);
+        resolve(c);
+      };
+      img.onerror = () => { URL.revokeObjectURL(url); reject('Render failed'); };
+      img.src = url;
+    });
+  }
+
+  // Preview
+  function schedulePreview() { clearTimeout(previewTimeout); if (activeIdx < 0) return; previewTimeout = setTimeout(doPreview, 280); }
+
+  async function doPreview() {
+    if (activeIdx < 0) return;
+    const f = files[activeIdx];
+    let w = parseInt(widthInput.value) || 1;
+    let h = linkedAspect ? Math.round(w / f.aspect) : (parseInt(heightInput.value) || 1);
+    try {
+      const canvas = await renderSVG(f.content, w, h);
+      const q = currentFormat === 'png' ? undefined : parseInt(qualitySlider.value) / 100;
+      const url = canvas.toDataURL(`image/${currentFormat}`, q);
+      outputImg.src = url; outputImg.style.display = 'block'; outputPlaceholder.style.display = 'none';
+      outDimLabel.innerHTML = `<span>${w} × ${h}</span>`;
+      outFormatLabel.textContent = currentFormat.toUpperCase();
+      const bytes = Math.round((url.length - url.indexOf(',') - 1) * 3 / 4);
+      outSizeLabel.textContent = `~${formatBytes(bytes)}`;
+    } catch(e) { console.error(e); }
+  }
+
+  // Export one
+  exportOneBtn.addEventListener('click', async () => {
+    if (activeIdx < 0) return;
+    exportOneBtn.disabled = true;
+    exportOneBtn.textContent = 'Rendering…';
+    try { await exportFile(activeIdx); renderQueue(); setStatus(`Exported ✓`, 'ok'); }
+    catch(e) { setStatus(`Error: ${e}`, 'err'); }
+    exportOneBtn.disabled = false;
+    exportOneBtn.textContent = 'Export →';
+  });
+
+  async function exportFile(i) {
+    const f = files[i];
+    let w = parseInt(widthInput.value) || 1;
+    let h = linkedAspect ? Math.round(w / f.aspect) : (parseInt(heightInput.value) || 1);
+    const canvas = await renderSVG(f.content, w, h);
+    const q = currentFormat === 'png' ? undefined : parseInt(qualitySlider.value) / 100;
+    const url = canvas.toDataURL(`image/${currentFormat}`, q);
+    const ext = currentFormat === 'jpeg' ? 'jpg' : currentFormat;
+    const link = document.createElement('a');
+    link.download = `${f.name.replace(/\.svg$/i,'')}-${w}x${h}.${ext}`;
+    link.href = url; link.click();
+    files[i].done = true;
+  }
+
+  // Export all
+  exportAllBtn.addEventListener('click', async () => {
+    if (!files.length) return;
+    exportOneBtn.disabled = true;
+    exportAllBtn.disabled = true;
+    progressWrap.classList.add('visible');
+    progressBar.style.width = '0%';
+    for (let i = 0; i < files.length; i++) {
+      setStatus(`Exporting ${i + 1} / ${files.length} — ${files[i].name}`);
+      try { await exportFile(i); renderQueue(); }
+      catch(e) { setStatus(`Error on ${files[i].name}: ${e}`, 'err'); }
+      await new Promise(r => setTimeout(r, 120));
+      progressBar.style.width = `${((i + 1) / files.length) * 100}%`;
+    }
+    progressWrap.classList.remove('visible');
+    exportOneBtn.disabled = activeIdx < 0;
+    exportAllBtn.disabled = false;
+    setStatus(`All ${files.length} files exported ✓`, 'ok');
+  });
+
+  function setStatus(msg, type = '') {
+    statusMsg.textContent = msg;
+    statusMsg.className = 'status-msg' + (type ? ` ${type}` : '');
+  }
+
+  function formatBytes(b) {
+    if (b < 1024) return b + ' B';
+    if (b < 1048576) return (b / 1024).toFixed(1) + ' KB';
+    return (b / 1048576).toFixed(2) + ' MB';
+  }
+
+  updateQualityNote();
+  updateDims();
+  renderQueue();
+</script>
+</body>
+</html>
